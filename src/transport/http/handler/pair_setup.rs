@@ -175,7 +175,7 @@ async fn handle_start(handler: &mut PairSetup, config: pointer::Config) -> Resul
 
     // TODO - respect pairing flags (specification p. 35 - 7.) for split pair setup
 
-    let private_key = srp_private_key::<Sha512>(b"Pair-Setup", &config.lock().await.pin.to_string().as_bytes(), &salt); // x = H(s | H(I | ":" | P))
+    let private_key = srp_private_key::<Sha512>(b"Pair-Setup", config.lock().await.pin.to_string().as_bytes(), &salt); // x = H(s | H(I | ":" | P))
     let srp_client = SrpClient::<Sha512>::new(&private_key, &G_3072);
     let verifier = srp_client.get_password_verifier(&private_key); // v = g^x
 
@@ -346,12 +346,7 @@ async fn handle_exchange(
                     aead.encrypt_in_place_detached(GenericArray::from_slice(&nonce), &[], &mut encrypted_data)?;
                 encrypted_data.extend(&auth_tag);
 
-                event_emitter
-                    .lock()
-                    .await
-                    .emit(&Event::ControllerPaired { id: pairing.id })
-                    .await;
-
+                emit!(event_emitter, &Event::ControllerPaired { id: pairing.id });
                 info!("pair setup M6: sending exchange response");
 
                 Ok(vec![
@@ -372,11 +367,11 @@ fn verify_client_proof<D: Digest>(
     group: &SrpGroup,
 ) -> Result<Vec<u8>, tlv::Error> {
     let mut dhn = D::new();
-    dhn.update(&group.n.to_bytes_be());
+    dhn.update(group.n.to_bytes_be());
     let hn = BigUint::from_bytes_be(&dhn.finalize());
 
     let mut dhg = D::new();
-    dhg.update(&group.g.to_bytes_be());
+    dhg.update(group.g.to_bytes_be());
     let hg = BigUint::from_bytes_be(&dhg.finalize());
 
     let hng = hn.bitxor(hg);
@@ -387,7 +382,7 @@ fn verify_client_proof<D: Digest>(
 
     let mut d = D::new();
     // M = H(H(N) xor H(g), H(I), s, A, B, K)
-    d.update(&hng.to_bytes_be());
+    d.update(hng.to_bytes_be());
     d.update(&hi);
     d.update(salt);
     d.update(a_pub);

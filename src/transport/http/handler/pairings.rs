@@ -161,12 +161,7 @@ async fn handle_add(
             s.save_pairing(&pairing).await?;
 
             drop(s);
-
-            event_emitter
-                .lock()
-                .await
-                .emit(&Event::ControllerPaired { id: pairing.id })
-                .await;
+            emit!(event_emitter, &Event::ControllerPaired { id: pairing.id });
         },
         Err(_) => {
             if let Some(max_peers) = config.lock().await.max_peers {
@@ -185,12 +180,7 @@ async fn handle_add(
             s.save_pairing(&pairing).await?;
 
             drop(s);
-
-            event_emitter
-                .lock()
-                .await
-                .emit(&Event::ControllerPaired { id: pairing.id })
-                .await;
+            emit!(event_emitter, &Event::ControllerPaired { id: pairing.id });
         },
     }
 
@@ -213,12 +203,7 @@ async fn handle_remove(
     let pairing_uuid = Uuid::parse_str(uuid_str)?;
     storage.lock().await.delete_pairing(&pairing_uuid).await?;
 
-    event_emitter
-        .lock()
-        .await
-        .emit(&Event::ControllerUnpaired { id: pairing_uuid })
-        .await;
-
+    emit!(event_emitter, &Event::ControllerUnpaired { id: pairing_uuid });
     info!("pairings M2: sending remove pairing response");
 
     Ok(vec![Value::State(StepNumber::Res as u8)])

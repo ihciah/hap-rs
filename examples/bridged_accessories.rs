@@ -1,14 +1,14 @@
 use tokio;
 
 use hap::{
-    accessory::{bridge::BridgeAccessory, lightbulb::LightbulbAccessory, AccessoryCategory, AccessoryInformation},
-    characteristic::CharacteristicCallbacks,
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, bridge::BridgeAccessory, lightbulb::LightbulbAccessory},
+    characteristic::CharacteristicCallbacks,
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

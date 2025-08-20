@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{leak_sensor::LeakSensorAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, leak_sensor::LeakSensorAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

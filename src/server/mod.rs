@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{accessory::HapAccessory, pointer, Result};
+use crate::{Result, accessory::HapAccessory, pointer};
 pub use ip::IpServer;
 
 mod ip;

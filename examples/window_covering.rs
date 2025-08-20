@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{window_covering::WindowCoveringAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, window_covering::WindowCoveringAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

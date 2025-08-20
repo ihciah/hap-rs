@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{lightbulb::LightbulbAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, lightbulb::LightbulbAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

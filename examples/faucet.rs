@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{faucet::FaucetAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, faucet::FaucetAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

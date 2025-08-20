@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{heater_cooler::HeaterCoolerAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, heater_cooler::HeaterCoolerAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

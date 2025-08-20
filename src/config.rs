@@ -1,18 +1,18 @@
 use ed25519_dalek::SigningKey as Ed25519Keypair;
 //use eui48::MacAddress;
 use macaddr::MacAddr6 as MacAddress;
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 
-use crate::{accessory::AccessoryCategory, BonjourFeatureFlag, BonjourStatusFlag, Pin};
+use crate::{BonjourFeatureFlag, BonjourStatusFlag, Pin, accessory::AccessoryCategory};
 
 /// The `Config` struct is used to store configuration options for the HomeKit Accessory Server.
 ///
 /// # Examples
 ///
 /// ```
-/// use hap::{accessory::AccessoryCategory, Config, MacAddress, Pin};
+/// use hap::{Config, MacAddress, Pin, accessory::AccessoryCategory};
 ///
 /// let config = Config {
 ///     pin: Pin::new([1, 1, 1, 2, 2, 3, 3, 3]).unwrap(),

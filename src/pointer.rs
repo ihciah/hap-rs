@@ -6,7 +6,7 @@ use crate::{accessory, event, storage};
 
 pub type ControllerId = Arc<RwLock<Option<Uuid>>>;
 
-pub type EventEmitter = Arc<Mutex<event::EventEmitter>>;
+pub type EventEmitter = Arc<std::sync::Mutex<event::EventEmitter>>;
 
 pub type EventSubscriptions = Arc<Mutex<Vec<(u64, u64)>>>;
 

@@ -1,24 +1,24 @@
 use serde::{
-    ser::{SerializeStruct, Serializer},
     Serialize,
+    ser::{SerializeStruct, Serializer},
 };
 use tokio;
 
 use hap::{
-    accessory::{AccessoryCategory, AccessoryInformation, HapAccessory},
-    server::{IpServer, Server},
-    service::{
-        accessory_information::AccessoryInformationService,
-        humidity_sensor::HumiditySensorService,
-        temperature_sensor::TemperatureSensorService,
-        HapService,
-    },
-    storage::{FileStorage, Storage},
     Config,
     HapType,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, HapAccessory},
+    server::{IpServer, Server},
+    service::{
+        HapService,
+        accessory_information::AccessoryInformationService,
+        humidity_sensor::HumiditySensorService,
+        temperature_sensor::TemperatureSensorService,
+    },
+    storage::{FileStorage, Storage},
 };
 
 /// Multi Sensor accessory.

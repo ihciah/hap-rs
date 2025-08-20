@@ -11,7 +11,7 @@ use std::{
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
-use crate::{pairing::Pairing, storage::Storage, Config, Error, Result};
+use crate::{Config, Error, Result, pairing::Pairing, storage::Storage};
 
 /// [`FileStorage`](FileStorage) is an implementor of the [`Storage`](Storage) trait that stores data to the file
 /// system.
@@ -29,9 +29,9 @@ impl FileStorage {
 
             let dir_path_str = dir_path.to_str().expect("couldn't stringify current_dir");
             // create subdirectory for pairings
-            fs::create_dir_all(&format!("{}/pairings", dir_path_str))?;
+            fs::create_dir_all(format!("{}/pairings", dir_path_str))?;
             // create subdirectory for custom byte storage
-            fs::create_dir_all(&format!("{}/misc", dir_path_str))?;
+            fs::create_dir_all(format!("{}/misc", dir_path_str))?;
 
             Ok(dir_path)
         })
@@ -187,13 +187,13 @@ impl Storage for FileStorage {
     }
 
     async fn save_pairing(&mut self, pairing: &Pairing) -> Result<()> {
-        let key = format!("pairings/{}.json", pairing.id.to_string());
+        let key = format!("pairings/{}.json", pairing.id);
         let pairing_bytes = pairing.as_bytes()?;
         self.write_bytes(&key, pairing_bytes).await
     }
 
     async fn delete_pairing(&mut self, id: &Uuid) -> Result<()> {
-        let key = format!("pairings/{}.json", id.to_string());
+        let key = format!("pairings/{}.json", id);
         self.remove_file(&key).await
     }
 
@@ -235,7 +235,7 @@ impl Storage for FileStorage {
 mod tests {
     use super::*;
 
-    use crate::{pairing::Permissions, BonjourStatusFlag};
+    use crate::{BonjourStatusFlag, pairing::Permissions};
 
     /// Ensure we can write a [`Config`](Config), then a shorter one, without corrupting data.
     #[tokio::test]

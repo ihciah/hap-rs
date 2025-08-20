@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{humidifier_dehumidifier::HumidifierDehumidifierAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, humidifier_dehumidifier::HumidifierDehumidifierAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{wi_fi_router::WiFiRouterAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, wi_fi_router::WiFiRouterAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

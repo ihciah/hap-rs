@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{carbon_dioxide_sensor::CarbonDioxideSensorAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, carbon_dioxide_sensor::CarbonDioxideSensorAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

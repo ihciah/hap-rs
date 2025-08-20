@@ -16,7 +16,7 @@ use tokio::net::TcpListener;
 use crate::{
     Error,
     Result,
-    event::Event,
+    event::{Event, EventListenerGuard},
     pointer,
     transport::{
         http::{
@@ -209,37 +209,34 @@ impl Server {
                 session_sender,
             );
 
-            event_emitter.lock().await.add_listener(Box::new(move |event| {
+            let listener_token = event_emitter.lock().unwrap().add_listener(Box::new(move |event| {
                 let event_subscriptions_ = event_subscriptions.clone();
                 let stream_outgoing_ = stream_outgoing.clone();
                 async move {
-                    match *event {
-                        Event::CharacteristicValueChanged { aid, iid, ref value } => {
-                            let mut dropped_subscriptions = vec![];
-                            for (i, &(s_aid, s_iid)) in event_subscriptions_.lock().await.iter().enumerate() {
-                                if s_aid == aid && s_iid == iid {
-                                    let event = EventObject {
-                                        aid,
-                                        iid,
-                                        value: value.clone(),
-                                    };
-                                    let event_res =
-                                        event_response(vec![event]).expect("couldn't create event response");
-                                    if stream_outgoing_.unbounded_send(event_res).is_err() {
-                                        dropped_subscriptions.push(i);
-                                    }
+                    if let Event::CharacteristicValueChanged { aid, iid, ref value } = *event {
+                        let mut dropped_subscriptions = vec![];
+                        for (i, &(s_aid, s_iid)) in event_subscriptions_.lock().await.iter().enumerate() {
+                            if s_aid == aid && s_iid == iid {
+                                let event = EventObject {
+                                    aid,
+                                    iid,
+                                    value: value.clone(),
+                                };
+                                let event_res = event_response(vec![event]).expect("couldn't create event response");
+                                if stream_outgoing_.unbounded_send(event_res).is_err() {
+                                    dropped_subscriptions.push(i);
                                 }
                             }
-                            let mut ev = event_subscriptions_.lock().await;
-                            for s in dropped_subscriptions {
-                                ev.remove(s);
-                            }
-                        },
-                        _ => {},
+                        }
+                        let mut ev = event_subscriptions_.lock().await;
+                        for s in dropped_subscriptions {
+                            ev.remove(s);
+                        }
                     }
                 }
                 .boxed()
             }));
+            let guard = EventListenerGuard::new(listener_token, event_emitter.clone());
 
             let mut http = Http::new();
             http.http1_only(true);
@@ -248,11 +245,13 @@ impl Server {
             http.http1_preserve_header_case(true);
 
             tokio::spawn(encrypted_stream.map_err(|e| error!("{:?}", e)).map(|_| ()));
-            tokio::spawn(
+            tokio::spawn(async move {
                 http.serve_connection(stream_wrapper, api)
                     .map_err(|e| error!("{:?}", e))
-                    .map(|_| ()),
-            );
+                    .map(|_| ())
+                    .await;
+                drop(guard);
+            });
         }
 
         #[allow(unreachable_code)]

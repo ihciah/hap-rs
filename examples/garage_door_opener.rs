@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{garage_door_opener::GarageDoorOpenerAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, garage_door_opener::GarageDoorOpenerAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

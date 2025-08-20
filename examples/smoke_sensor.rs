@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{smoke_sensor::SmokeSensorAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, smoke_sensor::SmokeSensorAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

@@ -2,7 +2,10 @@ use erased_serde::serialize_trait_object;
 use futures::executor;
 
 use crate::{
+    HapType,
+    Result,
     characteristic::{
+        HapCharacteristic,
         accessory_flags::AccessoryFlagsCharacteristic,
         application_matching_identifier::ApplicationMatchingIdentifierCharacteristic,
         configured_name::ConfiguredNameCharacteristic,
@@ -11,12 +14,9 @@ use crate::{
         hardware_revision::HardwareRevisionCharacteristic,
         product_data::ProductDataCharacteristic,
         software_revision::SoftwareRevisionCharacteristic,
-        HapCharacteristic,
     },
     pointer,
-    service::{accessory_information::AccessoryInformationService, HapService},
-    HapType,
-    Result,
+    service::{HapService, accessory_information::AccessoryInformationService},
 };
 
 mod category;
@@ -32,9 +32,17 @@ pub trait HapAccessory: HapAccessorySetup + erased_serde::Serialize + Send + Syn
     /// Sets the ID of the accessory.
     fn set_id(&mut self, id: u64);
     /// Returns a reference to a specific service of the accessory if it's present on it.
-    fn get_service(&self, hap_type: HapType) -> Option<&dyn HapService>;
+    fn get_service(&self, hap_type: HapType) -> Option<&dyn HapService> {
+        self.get_services()
+            .into_iter()
+            .find(|service| service.get_type() == hap_type)
+    }
     /// Returns a mutable reference to a specific service of the accessory if it's present on it.
-    fn get_mut_service(&mut self, hap_type: HapType) -> Option<&mut dyn HapService>;
+    fn get_mut_service(&mut self, hap_type: HapType) -> Option<&mut dyn HapService> {
+        self.get_mut_services()
+            .into_iter()
+            .find(|service| service.get_type() == hap_type)
+    }
     /// Returns references to all services of the accessory.
     fn get_services(&self) -> Vec<&dyn HapService>;
     /// Returns mutable references to all services of the accessory.
@@ -70,7 +78,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use hap::accessory::{outlet::OutletAccessory, AccessoryInformation};
+/// use hap::accessory::{AccessoryInformation, outlet::OutletAccessory};
 ///
 /// let information = AccessoryInformation {
 ///     manufacturer: "Acme".into(),

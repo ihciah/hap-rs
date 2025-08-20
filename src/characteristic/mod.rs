@@ -2,14 +2,14 @@ use async_trait::async_trait;
 use erased_serde::serialize_trait_object;
 use futures::future::BoxFuture;
 use serde::{
-    ser::{SerializeStruct, Serializer},
     Deserialize,
     Serialize,
+    ser::{SerializeStruct, Serializer},
 };
 use serde_json::json;
 use std::fmt;
 
-use crate::{event::Event, pointer, Error, HapType, Result};
+use crate::{Error, HapType, Result, event::Event, pointer};
 
 mod generated;
 
@@ -211,10 +211,10 @@ where
     pub async fn get_value(&mut self) -> Result<T> {
         let mut val = None;
         if let Some(ref mut on_read) = self.on_read {
-            val = on_read().map_err(|e| Error::ValueOnRead(e))?;
+            val = on_read().map_err(Error::ValueOnRead)?;
         }
         if let Some(ref mut on_read_async) = self.on_read_async {
-            val = on_read_async().await.map_err(|e| Error::ValueOnRead(e))?;
+            val = on_read_async().await.map_err(Error::ValueOnRead)?;
         }
         if let Some(v) = val {
             self.set_value(v).await?;
@@ -239,25 +239,21 @@ where
 
         let old_val = self.value.clone();
         if let Some(ref mut on_update) = self.on_update {
-            on_update(&old_val, &val).map_err(|e| Error::ValueOnUpdate(e))?;
+            on_update(&old_val, &val).map_err(Error::ValueOnUpdate)?;
         }
         if let Some(ref mut on_update_async) = self.on_update_async {
             on_update_async(old_val, val.clone())
                 .await
-                .map_err(|e| Error::ValueOnUpdate(e))?;
+                .map_err(Error::ValueOnUpdate)?;
         }
 
         if self.event_notifications == Some(true) {
             if let Some(ref event_emitter) = self.event_emitter {
-                event_emitter
-                    .lock()
-                    .await
-                    .emit(&Event::CharacteristicValueChanged {
-                        aid: self.accessory_id,
-                        iid: self.id,
-                        value: json!(&val),
-                    })
-                    .await;
+                emit!(event_emitter, &Event::CharacteristicValueChanged {
+                    aid: self.accessory_id,
+                    iid: self.id,
+                    value: json!(&val),
+                });
             }
         }
 
@@ -453,7 +449,7 @@ pub enum Unit {
 }
 
 /// [`Format`](Format) (data type) of a characteristic.
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum Format {
     #[serde(rename = "bool")]
     Bool,
@@ -470,15 +466,12 @@ pub enum Format {
     #[serde(rename = "float")]
     Float,
     #[serde(rename = "string")]
+    #[default]
     String,
     #[serde(rename = "tlv8")]
     Tlv8,
     #[serde(rename = "data")]
     Data,
-}
-
-impl Default for Format {
-    fn default() -> Format { Format::String }
 }
 
 /// [`HapCharacteristic`](HapCharacteristic) is implemented by every HAP characteristic.

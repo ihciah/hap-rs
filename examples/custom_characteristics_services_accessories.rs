@@ -1,21 +1,21 @@
 use serde::{
-    ser::{SerializeStruct, Serializer},
     Serialize,
+    ser::{SerializeStruct, Serializer},
 };
 use tokio;
 use uuid::Uuid;
 
 use hap::{
-    accessory::{AccessoryCategory, AccessoryInformation, HapAccessory},
-    characteristic::{Characteristic, Format, HapCharacteristic, Perm},
-    server::{IpServer, Server},
-    service::{accessory_information::AccessoryInformationService, HapService},
-    storage::{FileStorage, Storage},
     Config,
     HapType,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, HapAccessory},
+    characteristic::{Characteristic, Format, HapCharacteristic, Perm},
+    server::{IpServer, Server},
+    service::{HapService, accessory_information::AccessoryInformationService},
+    storage::{FileStorage, Storage},
 };
 
 // creating a custom service

@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{irrigation_system::IrrigationSystemAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, irrigation_system::IrrigationSystemAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

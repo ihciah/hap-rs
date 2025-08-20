@@ -1,13 +1,13 @@
 use tokio;
 
 use hap::{
-    accessory::{temperature_sensor::TemperatureSensorAccessory, AccessoryCategory, AccessoryInformation},
-    server::{IpServer, Server},
-    storage::{FileStorage, Storage},
     Config,
     MacAddress,
     Pin,
     Result,
+    accessory::{AccessoryCategory, AccessoryInformation, temperature_sensor::TemperatureSensorAccessory},
+    server::{IpServer, Server},
+    storage::{FileStorage, Storage},
 };
 
 #[tokio::main]

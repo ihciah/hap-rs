@@ -122,8 +122,7 @@ async fn handle_start(
     a_pub.copy_from_slice(bytes);
     let a_pub = PublicKey::from(a_pub);
 
-    let mut csprng = OsRng {};
-    let b = EphemeralSecret::random_from_rng(&mut csprng);
+    let b = EphemeralSecret::random_from_rng(OsRng);
     let b_pub = PublicKey::from(&b);
     let shared_secret = b.diffie_hellman(&a_pub);
 

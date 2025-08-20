@@ -174,7 +174,7 @@ impl IpServer {
             .boxed()
         }));
 
-        let event_emitter = Arc::new(Mutex::new(event_emitter));
+        let event_emitter = Arc::new(std::sync::Mutex::new(event_emitter));
         let accessory_database = Arc::new(Mutex::new(AccessoryDatabase::new(event_emitter.clone())));
 
         let http_server = HttpServer::new(
@@ -250,11 +250,7 @@ impl Server for IpServer {
     async fn remove_accessory(&self, accessory: &pointer::Accessory) -> Result<()> {
         let aid = accessory.lock().await.get_id();
 
-        self.accessory_database
-            .lock()
-            .await
-            .remove_accessory(accessory)
-            .await?;
+        self.accessory_database.lock().await.remove_accessory(accessory).await?;
 
         let mut aid_cache = self.aid_cache.lock().await;
         if aid_cache.contains(&aid) {

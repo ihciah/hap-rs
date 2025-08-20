@@ -1,16 +1,16 @@
 use hyper::{
-    header::{CONTENT_LENGTH, CONTENT_TYPE},
     Body,
     Response,
     StatusCode,
+    header::{CONTENT_LENGTH, CONTENT_TYPE},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    characteristic::{Format, Perm, Unit},
     Error,
     HapType,
     Result,
+    characteristic::{Format, Perm, Unit},
 };
 
 mod handler;
@@ -33,17 +33,17 @@ pub enum Status {
     InvalidValueInRequest = -70410,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum ContentType {
     PairingTLV8,
     HapJson,
 }
 
-impl ContentType {
-    pub fn to_string(self) -> String {
+impl std::fmt::Display for ContentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ContentType::PairingTLV8 => "application/pairing+tlv8".into(),
-            ContentType::HapJson => "application/hap+json".into(),
+            ContentType::PairingTLV8 => write!(f, "application/pairing+tlv8"),
+            ContentType::HapJson => write!(f, "application/hap+json"),
         }
     }
 }
@@ -127,7 +127,7 @@ pub fn event_response(event_objects: Vec<EventObject>) -> Result<Vec<u8>> {
     })?;
     let response = format!(
         "EVENT/1.0 200 OK\nContent-Type: {}\nContent-Length: {}\n\n{}",
-        ContentType::HapJson.to_string(),
+        ContentType::HapJson,
         body.len(),
         body,
     );

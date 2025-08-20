@@ -1,7 +1,7 @@
-pub use signature::Keypair as Ed25519Keypair;
 pub use futures;
 pub use macaddr::MacAddr6 as MacAddress;
 pub use serde_json;
+pub use signature::Keypair as Ed25519Keypair;
 
 pub use crate::{
     config::Config,
@@ -11,9 +11,11 @@ pub use crate::{
     transport::bonjour::{BonjourFeatureFlag, BonjourStatusFlag},
 };
 
+#[macro_use]
+mod event;
+
 mod config;
 mod error;
-mod event;
 mod hap_type;
 mod pin;
 mod pointer;
