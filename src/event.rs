@@ -57,7 +57,7 @@ impl EventListenerGuard {
 impl Drop for EventListenerGuard {
     fn drop(&mut self) {
         let mut emitter = self.emitter.lock().unwrap();
-        emitter.listeners.remove(self.token);
+        drop(emitter.listeners.remove(self.token));
     }
 }
 

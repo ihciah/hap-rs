@@ -1,4 +1,4 @@
-use aead::{AeadInPlace, NewAead, generic_array::GenericArray};
+use aead::{AeadInPlace, KeyInit, generic_array::GenericArray};
 use byteorder::{ByteOrder, LittleEndian};
 use bytes::{Buf, BytesMut};
 use chacha20poly1305::{ChaCha20Poly1305, Nonce, Tag};
