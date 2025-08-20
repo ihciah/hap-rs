@@ -23,7 +23,7 @@ impl Pairing {
 
     /// Deserializes a [`Pairing`](Pairing) from bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<Pairing> {
-        let value = serde_json::from_slice(&bytes)?;
+        let value = serde_json::from_slice(bytes)?;
         Ok(value)
     }
 

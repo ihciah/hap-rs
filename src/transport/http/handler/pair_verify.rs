@@ -1,13 +1,10 @@
-use aead::{generic_array::GenericArray, AeadInPlace, NewAead};
+use aead::{AeadInPlace, NewAead, generic_array::GenericArray};
 use chacha20poly1305::ChaCha20Poly1305;
-use futures::{
-    channel::oneshot,
-    future::{BoxFuture, FutureExt},
-};
-use hyper::{body::Buf, Body};
+use futures::channel::oneshot;
+use hyper::{Body, body::Buf};
 use log::{debug, info};
 use rand::rngs::OsRng;
-use signature::{Signer, Verifier};
+use signature::Signer;
 use std::str;
 use uuid::Uuid;
 use x25519_dalek::{EphemeralSecret, PublicKey};
@@ -58,64 +55,58 @@ impl TlvHandlerExt for PairVerify {
     type ParseResult = Step;
     type Result = tlv::Container;
 
-    fn parse(&self, body: Body) -> BoxFuture<Result<Step, tlv::ErrorContainer>> {
-        async {
-            let aggregated_body = hyper::body::aggregate(body)
-                .await
-                .map_err(|_| tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown))?;
+    async fn parse(&self, body: Body) -> Result<Step, tlv::ErrorContainer> {
+        let aggregated_body = hyper::body::aggregate(body)
+            .await
+            .map_err(|_| tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown))?;
 
-            debug!("received body: {:?}", aggregated_body.chunk());
+        debug!("received body: {:?}", aggregated_body.chunk());
 
-            let mut decoded = tlv::decode(aggregated_body.chunk());
-            match decoded.get(&(Type::State as u8)) {
-                Some(method) => match method[0] {
-                    x if x == StepNumber::StartReq as u8 => {
-                        let a_pub = decoded
-                            .remove(&(Type::PublicKey as u8))
-                            .ok_or(tlv::ErrorContainer::new(
-                                StepNumber::StartRes as u8,
-                                tlv::Error::Unknown,
-                            ))?;
-                        Ok(Step::Start { a_pub })
-                    },
-                    x if x == StepNumber::FinishReq as u8 => {
-                        let data = decoded
-                            .remove(&(Type::EncryptedData as u8))
-                            .ok_or(tlv::ErrorContainer::new(
-                                StepNumber::FinishRes as u8,
-                                tlv::Error::Unknown,
-                            ))?;
-                        Ok(Step::Finish { data })
-                    },
-                    _ => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
+        let mut decoded = tlv::decode(aggregated_body.chunk());
+        match decoded.get(&(Type::State as u8)) {
+            Some(method) => match method[0] {
+                x if x == StepNumber::StartReq as u8 => {
+                    let a_pub = decoded
+                        .remove(&(Type::PublicKey as u8))
+                        .ok_or(tlv::ErrorContainer::new(
+                            StepNumber::StartRes as u8,
+                            tlv::Error::Unknown,
+                        ))?;
+                    Ok(Step::Start { a_pub })
                 },
-                None => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
-            }
+                x if x == StepNumber::FinishReq as u8 => {
+                    let data = decoded
+                        .remove(&(Type::EncryptedData as u8))
+                        .ok_or(tlv::ErrorContainer::new(
+                            StepNumber::FinishRes as u8,
+                            tlv::Error::Unknown,
+                        ))?;
+                    Ok(Step::Finish { data })
+                },
+                _ => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
+            },
+            None => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
         }
-        .boxed()
     }
 
-    fn handle(
+    async fn handle(
         &mut self,
         step: Step,
         _: pointer::ControllerId,
         config: pointer::Config,
         storage: pointer::Storage,
         _: pointer::EventEmitter,
-    ) -> BoxFuture<Result<tlv::Container, tlv::ErrorContainer>> {
-        async move {
-            match step {
-                Step::Start { a_pub } => match handle_start(self, config, a_pub).await {
-                    Ok(res) => Ok(res),
-                    Err(err) => Err(tlv::ErrorContainer::new(StepNumber::StartRes as u8, err)),
-                },
-                Step::Finish { data } => match handle_finish(self, storage, &data).await {
-                    Ok(res) => Ok(res),
-                    Err(err) => Err(tlv::ErrorContainer::new(StepNumber::FinishRes as u8, err)),
-                },
-            }
+    ) -> Result<tlv::Container, tlv::ErrorContainer> {
+        match step {
+            Step::Start { a_pub } => match handle_start(self, config, a_pub).await {
+                Ok(res) => Ok(res),
+                Err(err) => Err(tlv::ErrorContainer::new(StepNumber::StartRes as u8, err)),
+            },
+            Step::Finish { data } => match handle_finish(self, storage, &data).await {
+                Ok(res) => Ok(res),
+                Err(err) => Err(tlv::ErrorContainer::new(StepNumber::FinishRes as u8, err)),
+            },
         }
-        .boxed()
     }
 }
 
@@ -132,7 +123,7 @@ async fn handle_start(
     let a_pub = PublicKey::from(a_pub);
 
     let mut csprng = OsRng {};
-    let b = EphemeralSecret::new(&mut csprng);
+    let b = EphemeralSecret::random_from_rng(&mut csprng);
     let b_pub = PublicKey::from(&b);
     let shared_secret = b.diffie_hellman(&a_pub);
 
@@ -216,9 +207,13 @@ async fn handle_finish(
             debug!("received sub-TLV: {:?}", &sub_tlv);
             let device_pairing_id = sub_tlv.get(&(Type::Identifier as u8)).ok_or(tlv::Error::Unknown)?;
             debug!("raw device pairing ID: {:?}", &device_pairing_id);
+            let device_signature_vec = sub_tlv.get(&(Type::Signature as u8)).ok_or(tlv::Error::Unknown)?;
+            if device_signature_vec.len() != 64 {
+                return Err(tlv::Error::Unknown);
+            }
             let device_signature = ed25519_dalek::Signature::from_bytes(
-                sub_tlv.get(&(Type::Signature as u8)).ok_or(tlv::Error::Unknown)?,
-            )?;
+                <&[u8; 64]>::try_from(&device_signature_vec[..]).map_err(|_| tlv::Error::Unknown)?,
+            );
             debug!("device signature: {:?}", &device_signature);
 
             let uuid_str = str::from_utf8(device_pairing_id)?;
@@ -232,7 +227,7 @@ async fn handle_finish(
             device_info.extend(device_pairing_id);
             device_info.extend(session.b_pub.as_bytes());
 
-            if ed25519_dalek::PublicKey::from_bytes(&pairing.public_key)?
+            if ed25519_dalek::SigningKey::from_bytes(&pairing.public_key)
                 .verify(&device_info, &device_signature)
                 .is_err()
             {

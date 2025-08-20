@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use futures::future::BoxFuture;
 
 use crate::{accessory::HapAccessory, pointer, Result};
 pub use ip::IpServer;
@@ -11,7 +10,7 @@ mod ip;
 #[async_trait]
 pub trait Server {
     /// Returns a [`BoxFuture`](BoxFuture) run handle to the server that can be passed to an executor.
-    fn run_handle(&self) -> BoxFuture<Result<()>>;
+    async fn run_handle(&self) -> Result<()>;
     /// Returns a pointer to the [`Config`](crate::Config) of the server.
     fn config_pointer(&self) -> pointer::Config;
     /// Returns a pointer to the [`Storage`](crate::storage::Storage) of the server.

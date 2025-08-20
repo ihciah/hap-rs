@@ -1,14 +1,13 @@
-use aead::{generic_array::GenericArray, AeadInPlace, NewAead};
+use aead::{AeadInPlace, NewAead, generic_array::GenericArray};
 use chacha20poly1305::ChaCha20Poly1305;
-use futures::future::{BoxFuture, FutureExt};
-use hyper::{body::Buf, Body};
+use hyper::{Body, body::Buf};
 use log::{debug, info};
 use num::BigUint;
-use rand::{rngs::OsRng, RngCore};
-use sha2::{digest::Digest, Sha512};
+use rand::{RngCore, rngs::OsRng};
+use sha2::{Sha512, digest::Digest};
 use signature::{Signer, Verifier};
 use srp::{
-    client::{srp_private_key, SrpClient},
+    client::{SrpClient, srp_private_key},
     groups::G_3072,
     server::{SrpServer, UserRecord},
     types::SrpGroup,
@@ -68,91 +67,85 @@ impl TlvHandlerExt for PairSetup {
     type ParseResult = Step;
     type Result = tlv::Container;
 
-    fn parse(&self, body: Body) -> BoxFuture<Result<Step, tlv::ErrorContainer>> {
-        async {
-            let aggregated_body = hyper::body::aggregate(body)
-                .await
-                .map_err(|_| tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown))?;
+    async fn parse(&self, body: Body) -> Result<Step, tlv::ErrorContainer> {
+        let aggregated_body = hyper::body::aggregate(body)
+            .await
+            .map_err(|_| tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown))?;
 
-            debug!("received body: {:?}", aggregated_body.chunk());
+        debug!("received body: {:?}", aggregated_body.chunk());
 
-            let mut decoded = tlv::decode(aggregated_body.chunk());
-            match decoded.get(&(Type::State as u8)) {
-                Some(method) => match method[0] {
-                    x if x == StepNumber::SrpStartRequest as u8 => Ok(Step::Start),
-                    x if x == StepNumber::SrpVerifyRequest as u8 => {
-                        let a_pub = decoded
-                            .remove(&(Type::PublicKey as u8))
-                            .ok_or(tlv::ErrorContainer::new(
-                                StepNumber::SrpVerifyResponse as u8,
-                                tlv::Error::Unknown,
-                            ))?;
-                        let a_proof = decoded.remove(&(Type::Proof as u8)).ok_or(tlv::ErrorContainer::new(
+        let mut decoded = tlv::decode(aggregated_body.chunk());
+        match decoded.get(&(Type::State as u8)) {
+            Some(method) => match method[0] {
+                x if x == StepNumber::SrpStartRequest as u8 => Ok(Step::Start),
+                x if x == StepNumber::SrpVerifyRequest as u8 => {
+                    let a_pub = decoded
+                        .remove(&(Type::PublicKey as u8))
+                        .ok_or(tlv::ErrorContainer::new(
                             StepNumber::SrpVerifyResponse as u8,
                             tlv::Error::Unknown,
                         ))?;
-                        Ok(Step::Verify { a_pub, a_proof })
-                    },
-                    x if x == StepNumber::ExchangeRequest as u8 => {
-                        let data = decoded
-                            .remove(&(Type::EncryptedData as u8))
-                            .ok_or(tlv::ErrorContainer::new(
-                                StepNumber::ExchangeResponse as u8,
-                                tlv::Error::Unknown,
-                            ))?;
-                        Ok(Step::Exchange { data })
-                    },
-                    _ => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
+                    let a_proof = decoded.remove(&(Type::Proof as u8)).ok_or(tlv::ErrorContainer::new(
+                        StepNumber::SrpVerifyResponse as u8,
+                        tlv::Error::Unknown,
+                    ))?;
+                    Ok(Step::Verify { a_pub, a_proof })
                 },
-                None => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
-            }
+                x if x == StepNumber::ExchangeRequest as u8 => {
+                    let data = decoded
+                        .remove(&(Type::EncryptedData as u8))
+                        .ok_or(tlv::ErrorContainer::new(
+                            StepNumber::ExchangeResponse as u8,
+                            tlv::Error::Unknown,
+                        ))?;
+                    Ok(Step::Exchange { data })
+                },
+                _ => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
+            },
+            None => Err(tlv::ErrorContainer::new(StepNumber::Unknown as u8, tlv::Error::Unknown)),
         }
-        .boxed()
     }
 
-    fn handle(
+    async fn handle(
         &mut self,
         step: Step,
         _: pointer::ControllerId,
         config: pointer::Config,
         storage: pointer::Storage,
         event_emitter: pointer::EventEmitter,
-    ) -> BoxFuture<Result<tlv::Container, tlv::ErrorContainer>> {
-        async move {
-            match step {
-                Step::Start => match handle_start(self, config).await {
-                    Ok(res) => {
-                        self.unsuccessful_tries = 0;
-                        Ok(res)
-                    },
-                    Err(err) => {
-                        self.unsuccessful_tries += 1;
-                        Err(tlv::ErrorContainer::new(StepNumber::SrpStartResponse as u8, err))
-                    },
+    ) -> Result<tlv::Container, tlv::ErrorContainer> {
+        match step {
+            Step::Start => match handle_start(self, config).await {
+                Ok(res) => {
+                    self.unsuccessful_tries = 0;
+                    Ok(res)
                 },
-                Step::Verify { a_pub, a_proof } => match handle_verify(self, &a_pub, &a_proof).await {
-                    Ok(res) => {
-                        self.unsuccessful_tries = 0;
-                        Ok(res)
-                    },
-                    Err(err) => {
-                        self.unsuccessful_tries += 1;
-                        Err(tlv::ErrorContainer::new(StepNumber::SrpVerifyResponse as u8, err))
-                    },
+                Err(err) => {
+                    self.unsuccessful_tries += 1;
+                    Err(tlv::ErrorContainer::new(StepNumber::SrpStartResponse as u8, err))
                 },
-                Step::Exchange { data } => match handle_exchange(self, config, storage, event_emitter, &data).await {
-                    Ok(res) => {
-                        self.unsuccessful_tries = 0;
-                        Ok(res)
-                    },
-                    Err(err) => {
-                        self.unsuccessful_tries += 1;
-                        Err(tlv::ErrorContainer::new(StepNumber::ExchangeResponse as u8, err))
-                    },
+            },
+            Step::Verify { a_pub, a_proof } => match handle_verify(self, &a_pub, &a_proof).await {
+                Ok(res) => {
+                    self.unsuccessful_tries = 0;
+                    Ok(res)
                 },
-            }
+                Err(err) => {
+                    self.unsuccessful_tries += 1;
+                    Err(tlv::ErrorContainer::new(StepNumber::SrpVerifyResponse as u8, err))
+                },
+            },
+            Step::Exchange { data } => match handle_exchange(self, config, storage, event_emitter, &data).await {
+                Ok(res) => {
+                    self.unsuccessful_tries = 0;
+                    Ok(res)
+                },
+                Err(err) => {
+                    self.unsuccessful_tries += 1;
+                    Err(tlv::ErrorContainer::new(StepNumber::ExchangeResponse as u8, err))
+                },
+            },
         }
-        .boxed()
     }
 }
 
@@ -276,12 +269,18 @@ async fn handle_exchange(
 
                 let sub_tlv = tlv::decode(&decrypted_data);
                 let device_pairing_id = sub_tlv.get(&(Type::Identifier as u8)).ok_or(tlv::Error::Unknown)?;
-                let device_ltpk = ed25519_dalek::PublicKey::from_bytes(
-                    sub_tlv.get(&(Type::PublicKey as u8)).ok_or(tlv::Error::Unknown)?,
-                )?;
+                let device_ltpk_bytes = sub_tlv.get(&(Type::PublicKey as u8)).ok_or(tlv::Error::Unknown)?;
+                let device_ltpk = if device_ltpk_bytes.len() == 32 {
+                    ed25519_dalek::VerifyingKey::from_bytes(
+                        <&[u8; 32]>::try_from(&device_ltpk_bytes[..]).map_err(|_| tlv::Error::Unknown)?,
+                    )?
+                } else {
+                    return Err(tlv::Error::Unknown);
+                };
+                let device_signature_bytes = sub_tlv.get(&(Type::Signature as u8)).ok_or(tlv::Error::Unknown)?;
                 let device_signature = ed25519_dalek::Signature::from_bytes(
-                    sub_tlv.get(&(Type::Signature as u8)).ok_or(tlv::Error::Unknown)?,
-                )?;
+                    <&[u8; 64]>::try_from(&device_signature_bytes[..]).map_err(|_| tlv::Error::Unknown)?,
+                );
 
                 let device_x = hkdf_extract_and_expand(
                     b"Pair-Setup-Controller-Sign-Salt",
@@ -326,12 +325,12 @@ async fn handle_exchange(
                 let mut accessory_info: Vec<u8> = Vec::new();
                 accessory_info.extend(&accessory_x);
                 accessory_info.extend(device_id.as_bytes());
-                accessory_info.extend(config.device_ed25519_keypair.public.as_bytes());
+                accessory_info.extend(config.device_ed25519_keypair.verifying_key().as_bytes());
                 let accessory_signature = config.device_ed25519_keypair.sign(&accessory_info);
 
                 let encoded_sub_tlv = vec![
                     Value::Identifier(device_id),
-                    Value::PublicKey(config.device_ed25519_keypair.public.as_bytes().to_vec()),
+                    Value::PublicKey(config.device_ed25519_keypair.verifying_key().as_bytes().to_vec()),
                     Value::Signature(accessory_signature.to_bytes().to_vec()),
                 ]
                 .encode();

@@ -71,9 +71,10 @@ impl Pin {
     // }
 }
 
-impl ToString for Pin {
-    fn to_string(&self) -> String {
-        format!(
+impl std::fmt::Display for Pin {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
             "{}{}{}-{}{}-{}{}{}",
             &self.pin[0],
             &self.pin[1],

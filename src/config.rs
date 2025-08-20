@@ -1,4 +1,4 @@
-use ed25519_dalek::Keypair as Ed25519Keypair;
+use ed25519_dalek::SigningKey as Ed25519Keypair;
 //use eui48::MacAddress;
 use macaddr::MacAddr6 as MacAddress;
 use rand::{rngs::OsRng, Rng};
@@ -50,7 +50,7 @@ pub struct Config {
     /// Pairing Identifier. Must be a unique random number generated at every factory reset and must persist across
     /// reboots.
     pub device_id: MacAddress, // Bonjour: id
-    ///
+    /// Device Ed25519 keypair.
     pub device_ed25519_keypair: Ed25519Keypair,
     /// Current configuration number. Is updated when an accessory, service, or characteristic is added or removed on
     /// the accessory server. Accessories must increment the config number after a firmware update.
@@ -79,7 +79,7 @@ impl Config {
         [
             format!("c#={}", self.configuration_number),
             format!("ff={}", self.feature_flag as u8),
-            format!("id={}", self.device_id.to_string()),
+            format!("id={}", self.device_id),
             format!("md={}", self.name),
             format!("pv={}", self.protocol_version),
             format!("s#={}", self.state_number),
@@ -123,11 +123,10 @@ fn generate_ed25519_keypair() -> Ed25519Keypair {
     Ed25519Keypair::generate(&mut csprng)
 }
 
-/// Returns the IP of the system's first non-loopback network interface or defaults to `127.0.0.1`.
 fn get_local_ip() -> IpAddr {
-    for iface in get_if_addrs::get_if_addrs().unwrap() {
+    for iface in if_addrs::get_if_addrs().unwrap() {
         if !iface.is_loopback() {
-            return iface.ip();
+            return iface.addr.ip();
         }
     }
     "127.0.0.1".parse().unwrap()

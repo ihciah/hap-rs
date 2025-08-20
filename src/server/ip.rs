@@ -1,21 +1,18 @@
 use async_trait::async_trait;
-use futures::{
-    future::{BoxFuture, FutureExt},
-    lock::Mutex,
-};
+use futures::{future::FutureExt, lock::Mutex};
 use log::{error, info};
 use std::sync::Arc;
 
 use crate::{
+    BonjourStatusFlag,
+    Result,
     accessory::HapAccessory,
     config::Config,
     event::{Event, EventEmitter},
     pointer,
     server::Server,
-    storage::{accessory_database::AccessoryDatabase, Storage},
+    storage::{Storage, accessory_database::AccessoryDatabase},
     transport::{http::server::Server as HttpServer, mdns::MdnsResponder},
-    BonjourStatusFlag,
-    Result,
 };
 
 /// HAP Server via TCP/IP.
@@ -37,13 +34,13 @@ impl IpServer {
     /// use tokio;
     ///
     /// use hap::{
-    ///     accessory::{lightbulb::LightbulbAccessory, AccessoryCategory, AccessoryInformation},
-    ///     server::{IpServer, Server},
-    ///     storage::{FileStorage, Storage},
     ///     Config,
     ///     MacAddress,
     ///     Pin,
     ///     Result,
+    ///     accessory::{AccessoryCategory, AccessoryInformation, lightbulb::LightbulbAccessory},
+    ///     server::{IpServer, Server},
+    ///     storage::{FileStorage, Storage},
     /// };
     ///
     /// #[tokio::main]
@@ -215,20 +212,13 @@ impl IpServer {
 
 #[async_trait]
 impl Server for IpServer {
-    fn run_handle(&self) -> BoxFuture<Result<()>> {
+    async fn run_handle(&self) -> Result<()> {
         let http_handle = self.http_server.run_handle();
         let mdns_responder = self.mdns_responder.clone();
 
-        let handle = async move {
-            let mdns_handle = mdns_responder.lock().await.run_handle();
-
-            futures::try_join!(http_handle, mdns_handle.map(|_| Ok(())))?;
-
-            Ok(())
-        }
-        .boxed();
-
-        Box::pin(handle)
+        let mdns_handle = mdns_responder.lock().await.run_handle();
+        futures::try_join!(http_handle, mdns_handle.map(|_| Ok(())))?;
+        Ok(())
     }
 
     fn config_pointer(&self) -> pointer::Config { self.config.clone() }
@@ -263,7 +253,7 @@ impl Server for IpServer {
         self.accessory_database
             .lock()
             .await
-            .remove_accessory(&accessory)
+            .remove_accessory(accessory)
             .await?;
 
         let mut aid_cache = self.aid_cache.lock().await;

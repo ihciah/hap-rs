@@ -1,12 +1,11 @@
-use futures::future::{BoxFuture, FutureExt};
 use hyper::{self, Body, Response, StatusCode, Uri};
 
 use crate::{
+    Error,
+    Result as HapResult,
     pointer,
     tlv::{self, Encodable},
     transport::http::{status_response, tlv_response},
-    Error,
-    Result,
 };
 
 pub mod accessories;
@@ -17,7 +16,7 @@ pub mod pair_verify;
 pub mod pairings;
 
 pub trait HandlerExt {
-    fn handle(
+    async fn handle(
         &mut self,
         uri: Uri,
         body: Body,
@@ -27,22 +26,22 @@ pub trait HandlerExt {
         storage: pointer::Storage,
         accessory_database: pointer::AccessoryDatabase,
         event_emitter: pointer::EventEmitter,
-    ) -> BoxFuture<Result<Response<Body>>>;
+    ) -> HapResult<Response<Body>>;
 }
 
 pub trait TlvHandlerExt {
     type ParseResult: Send;
     type Result: Encodable;
 
-    fn parse(&self, body: Body) -> BoxFuture<std::result::Result<Self::ParseResult, tlv::ErrorContainer>>;
-    fn handle(
+    async fn parse(&self, body: Body) -> Result<Self::ParseResult, tlv::ErrorContainer>;
+    async fn handle(
         &mut self,
         step: Self::ParseResult,
         controller_id: pointer::ControllerId,
         config: pointer::Config,
         storage: pointer::Storage,
         event_emitter: pointer::EventEmitter,
-    ) -> BoxFuture<std::result::Result<Self::Result, tlv::ErrorContainer>>;
+    ) -> Result<Self::Result, tlv::ErrorContainer>;
 }
 
 #[derive(Debug)]
@@ -53,7 +52,7 @@ impl<T: TlvHandlerExt + Send + Sync> From<T> for TlvHandler<T> {
 }
 
 impl<T: TlvHandlerExt + Send + Sync> HandlerExt for TlvHandler<T> {
-    fn handle(
+    async fn handle(
         &mut self,
         _: Uri,
         body: Body,
@@ -63,23 +62,20 @@ impl<T: TlvHandlerExt + Send + Sync> HandlerExt for TlvHandler<T> {
         storage: pointer::Storage,
         _: pointer::AccessoryDatabase,
         event_emitter: pointer::EventEmitter,
-    ) -> BoxFuture<Result<Response<Body>>> {
-        async move {
-            let response = match self.0.parse(body).await {
+    ) -> HapResult<Response<Body>> {
+        let response = match self.0.parse(body).await {
+            Err(e) => e.encode(),
+            Ok(step) => match self.0.handle(step, controller_id, config, storage, event_emitter).await {
                 Err(e) => e.encode(),
-                Ok(step) => match self.0.handle(step, controller_id, config, storage, event_emitter).await {
-                    Err(e) => e.encode(),
-                    Ok(res) => res.encode(),
-                },
-            };
-            tlv_response(response, StatusCode::OK)
-        }
-        .boxed()
+                Ok(res) => res.encode(),
+            },
+        };
+        tlv_response(response, StatusCode::OK)
     }
 }
 
 pub trait JsonHandlerExt {
-    fn handle(
+    async fn handle(
         &mut self,
         uri: Uri,
         body: Body,
@@ -89,7 +85,7 @@ pub trait JsonHandlerExt {
         storage: pointer::Storage,
         accessory_database: pointer::AccessoryDatabase,
         event_emitter: pointer::EventEmitter,
-    ) -> BoxFuture<Result<Response<Body>>>;
+    ) -> HapResult<Response<Body>>;
 }
 
 #[derive(Debug)]
@@ -100,7 +96,7 @@ impl<T: JsonHandlerExt + Send + Sync> From<T> for JsonHandler<T> {
 }
 
 impl<T: JsonHandlerExt + Send + Sync> HandlerExt for JsonHandler<T> {
-    fn handle(
+    async fn handle(
         &mut self,
         uri: Uri,
         body: Body,
@@ -110,29 +106,26 @@ impl<T: JsonHandlerExt + Send + Sync> HandlerExt for JsonHandler<T> {
         storage: pointer::Storage,
         accessory_database: pointer::AccessoryDatabase,
         event_emitter: pointer::EventEmitter,
-    ) -> BoxFuture<Result<Response<Body>>> {
-        async move {
-            match self
-                .0
-                .handle(
-                    uri,
-                    body,
-                    controller_id,
-                    event_subscriptions,
-                    config,
-                    storage,
-                    accessory_database,
-                    event_emitter,
-                )
-                .await
-            {
-                Ok(res) => Ok(res),
-                Err(e) => match e {
-                    Error::HttpStatus(status) => status_response(status),
-                    _ => status_response(StatusCode::INTERNAL_SERVER_ERROR),
-                },
-            }
+    ) -> HapResult<Response<Body>> {
+        match self
+            .0
+            .handle(
+                uri,
+                body,
+                controller_id,
+                event_subscriptions,
+                config,
+                storage,
+                accessory_database,
+                event_emitter,
+            )
+            .await
+        {
+            Ok(res) => Ok(res),
+            Err(e) => match e {
+                Error::HttpStatus(status) => status_response(status),
+                _ => status_response(StatusCode::INTERNAL_SERVER_ERROR),
+            },
         }
-        .boxed()
     }
 }

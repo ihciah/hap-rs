@@ -1,9 +1,9 @@
 use futures::{
     channel::oneshot,
-    future::{self, BoxFuture, Future, FutureExt, TryFutureExt},
+    future::{Future, FutureExt, TryFutureExt},
     lock::Mutex,
 };
-use hyper::{server::conn::Http, service::Service, Body, Method, Request, Response, StatusCode};
+use hyper::{Body, Method, Request, Response, StatusCode, server::conn::Http, service::Service};
 use log::{debug, error, info};
 use std::{
     net::SocketAddr,
@@ -14,39 +14,39 @@ use std::{
 use tokio::net::TcpListener;
 
 use crate::{
+    Error,
+    Result,
     event::Event,
     pointer,
     transport::{
         http::{
+            EventObject,
             event_response,
             handler::{
+                HandlerExt,
+                JsonHandler,
+                TlvHandler,
                 accessories::Accessories,
                 characteristics::{GetCharacteristics, UpdateCharacteristics},
                 identify::Identify,
                 pair_setup::PairSetup,
                 pair_verify::PairVerify,
                 pairings::Pairings,
-                HandlerExt,
-                JsonHandler,
-                TlvHandler,
             },
             status_response,
-            EventObject,
         },
         tcp::{EncryptedStream, Session, StreamWrapper},
     },
-    Error,
-    Result,
 };
 
 struct Handlers {
-    pub pair_setup: Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>,
-    pub pair_verify: Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>,
-    pub accessories: Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>,
-    pub get_characteristics: Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>,
-    pub put_characteristics: Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>,
-    pub pairings: Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>,
-    pub identify: Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>,
+    pub pair_setup: Arc<Mutex<Box<TlvHandler<PairSetup>>>>,
+    pub pair_verify: Arc<Mutex<Box<TlvHandler<PairVerify>>>>,
+    pub accessories: Arc<Mutex<Box<JsonHandler<Accessories>>>>,
+    pub get_characteristics: Arc<Mutex<Box<JsonHandler<GetCharacteristics>>>>,
+    pub put_characteristics: Arc<Mutex<Box<JsonHandler<UpdateCharacteristics>>>>,
+    pub pairings: Arc<Mutex<Box<TlvHandler<Pairings>>>>,
+    pub identify: Arc<Mutex<Box<JsonHandler<Identify>>>>,
 }
 
 struct Api {
@@ -103,17 +103,6 @@ impl Service<Request<Body>> for Api {
         let method = parts.method;
         let uri = parts.uri;
 
-        let mut handler: Option<Arc<Mutex<Box<dyn HandlerExt + Send + Sync>>>> = match (method, uri.path()) {
-            (Method::POST, "/pair-setup") => Some(self.handlers.pair_setup.clone()),
-            (Method::POST, "/pair-verify") => Some(self.handlers.pair_verify.clone()),
-            (Method::GET, "/accessories") => Some(self.handlers.accessories.clone()),
-            (Method::GET, "/characteristics") => Some(self.handlers.get_characteristics.clone()),
-            (Method::PUT, "/characteristics") => Some(self.handlers.put_characteristics.clone()),
-            (Method::POST, "/pairings") => Some(self.handlers.pairings.clone()),
-            (Method::POST, "/identify") => Some(self.handlers.identify.clone()),
-            _ => None,
-        };
-
         let controller_id = self.controller_id.clone();
         let event_subscriptions = self.event_subscriptions.clone();
         let config = self.config.clone();
@@ -121,11 +110,11 @@ impl Service<Request<Body>> for Api {
         let accessory_database = self.accessory_database.clone();
         let event_emitter = self.event_emitter.clone();
 
-        let fut = async move {
-            match handler.take() {
-                Some(handler) =>
-                    handler
-                        .lock()
+        macro_rules! handle {
+            ($handler:expr) => {{
+                let h = $handler;
+                async move {
+                    h.lock()
                         .await
                         .handle(
                             uri,
@@ -137,12 +126,22 @@ impl Service<Request<Body>> for Api {
                             accessory_database,
                             event_emitter,
                         )
-                        .await,
-                None => future::ready(status_response(StatusCode::NOT_FOUND)).await,
-            }
+                        .await
+                }
+                .boxed()
+            }};
         }
-        .boxed();
 
+        let fut = match (method, uri.path()) {
+            (Method::POST, "/pair-setup") => handle!(self.handlers.pair_setup.clone()),
+            (Method::POST, "/pair-verify") => handle!(self.handlers.pair_verify.clone()),
+            (Method::GET, "/accessories") => handle!(self.handlers.accessories.clone()),
+            (Method::GET, "/characteristics") => handle!(self.handlers.get_characteristics.clone()),
+            (Method::PUT, "/characteristics") => handle!(self.handlers.put_characteristics.clone()),
+            (Method::POST, "/pairings") => handle!(self.handlers.pairings.clone()),
+            (Method::POST, "/identify") => handle!(self.handlers.identify.clone()),
+            _ => async move { status_response(StatusCode::NOT_FOUND) }.boxed(),
+        };
         fut
     }
 }
@@ -173,99 +172,90 @@ impl Server {
         }
     }
 
-    pub fn run_handle(&self) -> BoxFuture<Result<()>> {
+    pub async fn run_handle(&self) -> Result<()> {
         let config = self.config.clone();
         let storage = self.storage.clone();
         let accessory_database = self.accessory_database.clone();
         let event_emitter = self.event_emitter.clone();
         let mdns_responder = self.mdns_responder.clone();
 
-        async move {
-            let config_lock = config.lock().await;
-            let socket_addr = SocketAddr::new(config_lock.host, config_lock.port);
-            drop(config_lock);
+        let config_lock = config.lock().await;
+        let socket_addr = SocketAddr::new(config_lock.host, config_lock.port);
+        drop(config_lock);
 
-            info!("binding TCP listener on {}", &socket_addr);
-            let listener = TcpListener::bind(socket_addr).await?;
+        info!("binding TCP listener on {}", &socket_addr);
+        let listener = TcpListener::bind(socket_addr).await?;
 
-            mdns_responder.lock().await.update_records().await;
+        mdns_responder.lock().await.update_records().await;
 
-            loop {
-                let (stream, _socket_addr) = listener.accept().await?;
+        loop {
+            let (stream, _socket_addr) = listener.accept().await?;
 
-                debug!("incoming TCP stream from {}", stream.peer_addr()?);
+            debug!("incoming TCP stream from {}", stream.peer_addr()?);
 
-                let (
-                    encrypted_stream,
-                    stream_incoming,
-                    stream_outgoing,
-                    session_sender,
-                    incoming_waker,
-                    outgoing_waker,
-                ) = EncryptedStream::new(stream);
-                let stream_wrapper =
-                    StreamWrapper::new(stream_incoming, stream_outgoing.clone(), incoming_waker, outgoing_waker);
-                let event_subscriptions = Arc::new(Mutex::new(vec![]));
+            let (encrypted_stream, stream_incoming, stream_outgoing, session_sender, incoming_waker, outgoing_waker) =
+                EncryptedStream::new(stream);
+            let stream_wrapper =
+                StreamWrapper::new(stream_incoming, stream_outgoing.clone(), incoming_waker, outgoing_waker);
+            let event_subscriptions = Arc::new(Mutex::new(vec![]));
 
-                let api = Api::new(
-                    encrypted_stream.controller_id.clone(),
-                    event_subscriptions.clone(),
-                    config.clone(),
-                    storage.clone(),
-                    accessory_database.clone(),
-                    event_emitter.clone(),
-                    session_sender,
-                );
+            let api = Api::new(
+                encrypted_stream.controller_id.clone(),
+                event_subscriptions.clone(),
+                config.clone(),
+                storage.clone(),
+                accessory_database.clone(),
+                event_emitter.clone(),
+                session_sender,
+            );
 
-                event_emitter.lock().await.add_listener(Box::new(move |event| {
-                    let event_subscriptions_ = event_subscriptions.clone();
-                    let stream_outgoing_ = stream_outgoing.clone();
-                    async move {
-                        match *event {
-                            Event::CharacteristicValueChanged { aid, iid, ref value } => {
-                                let mut dropped_subscriptions = vec![];
-                                for (i, &(s_aid, s_iid)) in event_subscriptions_.lock().await.iter().enumerate() {
-                                    if s_aid == aid && s_iid == iid {
-                                        let event = EventObject {
-                                            aid,
-                                            iid,
-                                            value: value.clone(),
-                                        };
-                                        let event_res =
-                                            event_response(vec![event]).expect("couldn't create event response");
-                                        if stream_outgoing_.unbounded_send(event_res).is_err() {
-                                            dropped_subscriptions.push(i);
-                                        }
+            event_emitter.lock().await.add_listener(Box::new(move |event| {
+                let event_subscriptions_ = event_subscriptions.clone();
+                let stream_outgoing_ = stream_outgoing.clone();
+                async move {
+                    match *event {
+                        Event::CharacteristicValueChanged { aid, iid, ref value } => {
+                            let mut dropped_subscriptions = vec![];
+                            for (i, &(s_aid, s_iid)) in event_subscriptions_.lock().await.iter().enumerate() {
+                                if s_aid == aid && s_iid == iid {
+                                    let event = EventObject {
+                                        aid,
+                                        iid,
+                                        value: value.clone(),
+                                    };
+                                    let event_res =
+                                        event_response(vec![event]).expect("couldn't create event response");
+                                    if stream_outgoing_.unbounded_send(event_res).is_err() {
+                                        dropped_subscriptions.push(i);
                                     }
                                 }
-                                let mut ev = event_subscriptions_.lock().await;
-                                for s in dropped_subscriptions {
-                                    ev.remove(s);
-                                }
-                            },
-                            _ => {},
-                        }
+                            }
+                            let mut ev = event_subscriptions_.lock().await;
+                            for s in dropped_subscriptions {
+                                ev.remove(s);
+                            }
+                        },
+                        _ => {},
                     }
-                    .boxed()
-                }));
+                }
+                .boxed()
+            }));
 
-                let mut http = Http::new();
-                http.http1_only(true);
-                http.http1_half_close(true);
-                http.http1_keep_alive(true);
-                http.http1_preserve_header_case(true);
+            let mut http = Http::new();
+            http.http1_only(true);
+            http.http1_half_close(true);
+            http.http1_keep_alive(true);
+            http.http1_preserve_header_case(true);
 
-                tokio::spawn(encrypted_stream.map_err(|e| error!("{:?}", e)).map(|_| ()));
-                tokio::spawn(
-                    http.serve_connection(stream_wrapper, api)
-                        .map_err(|e| error!("{:?}", e))
-                        .map(|_| ()),
-                );
-            }
-
-            #[allow(unreachable_code)]
-            Ok(())
+            tokio::spawn(encrypted_stream.map_err(|e| error!("{:?}", e)).map(|_| ()));
+            tokio::spawn(
+                http.serve_connection(stream_wrapper, api)
+                    .map_err(|e| error!("{:?}", e))
+                    .map(|_| ()),
+            );
         }
-        .boxed()
+
+        #[allow(unreachable_code)]
+        Ok(())
     }
 }
